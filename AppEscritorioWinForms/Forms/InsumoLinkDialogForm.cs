@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Globalization;
 using System.Windows.Forms;
+using System.Collections.Generic;
+using app_escritorio.Data;
 using app_escritorio.Models;
 using app_escritorio.UI;
 
@@ -11,10 +13,30 @@ namespace app_escritorio.Forms
     {
         public InsumoLink Result { get; private set; }
 
+        /// <summary>Insumos del inventario (nombre → unidad).</summary>
+        private readonly Dictionary<string, string> _insumos = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
         public InsumoLinkDialogForm()
         {
             InitializeComponent();
             cmbUnidad.Text = "kg";
+            if (UiHelpers.IsDesignTime) return;
+
+            // La lista sale del inventario real; si se escribe un insumo nuevo, se crea al publicar la carta.
+            foreach (var kv in InsumoStore.NamesWithUnit()) _insumos[kv.Key] = kv.Value;
+            if (_insumos.Count > 0)
+            {
+                cmbInsumo.Items.Clear();
+                foreach (var name in _insumos.Keys) cmbInsumo.Items.Add(name);
+            }
+            cmbInsumo.SelectedIndexChanged += (s, e) => SuggestUnit();
+            cmbInsumo.Leave += (s, e) => SuggestUnit();
+        }
+
+        /// <summary>Al elegir un insumo existente se propone su unidad del inventario.</summary>
+        private void SuggestUnit()
+        {
+            if (_insumos.TryGetValue(cmbInsumo.Text.Trim(), out var unit)) cmbUnidad.Text = unit;
         }
 
         protected override void OnShown(EventArgs e)
@@ -39,7 +61,13 @@ namespace app_escritorio.Forms
                 txtCantidad.Focus();
                 return;
             }
-            string unidad = string.IsNullOrWhiteSpace(cmbUnidad.Text) ? "und" : cmbUnidad.Text.Trim();
+            string unidad = Unidades.Normalizar(string.IsNullOrWhiteSpace(cmbUnidad.Text) ? "und" : cmbUnidad.Text);
+            if (unidad == null)
+            {
+                MessageBox.Show("Unidad no válida. Usa: " + string.Join(", ", Unidades.Todas) + ".", "RestoOS", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                cmbUnidad.Focus();
+                return;
+            }
             Result = new InsumoLink { Nombre = nombre, Cantidad = cantidad, Unidad = unidad };
             DialogResult = DialogResult.OK;
             Close();

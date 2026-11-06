@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using app_escritorio.Data;
 using app_escritorio.Models;
 using app_escritorio.UI;
 using app_escritorio.Utils;
@@ -11,32 +12,50 @@ namespace app_escritorio.Forms
 {
     /// <summary>
     /// Inventario (migración de InventarioView.xaml de WPF): insumos con filtros, estado de stock y acciones.
-    /// Los datos son DEMO en memoria; el diseño completo está en InventarioForm.Designer.cs.
+    /// Los insumos se leen y guardan en SQL Server (InsumoStore); cada venta los descuenta según la receta del plato.
     /// </summary>
     public partial class InventarioForm : Form
     {
-        private readonly List<Insumo> _all = new List<Insumo>();
+        private List<Insumo> _all = new List<Insumo>();
+        private bool _loading;
 
         public InventarioForm()
         {
             InitializeComponent();
             if (UiHelpers.IsDesignTime) return;
 
-            LoadMock();
-            cmbCategory.SelectedIndex = 0;
+            Reload();
+        }
+
+        /// <summary>Relee los insumos (el Shell lo llama al mostrar la pantalla: las ventas cambian el stock).</summary>
+        public void Reload()
+        {
+            if (IsDisposed || Disposing) return;
+            try
+            {
+                _all = InsumoStore.Load();
+            }
+            catch (Exception ex)
+            {
+                Db.ShowError("cargar el inventario", ex);
+                _all = new List<Insumo>();
+            }
+            LoadCategories();
             ApplyFilter();
         }
 
-        private void LoadMock()
+        /// <summary>Categorías del filtro: las de la base más las de los insumos cargados.</summary>
+        private void LoadCategories()
         {
-            _all.Add(new Insumo("Carne de res (lomo)", "Carnes", 4.2m, "kg", 5m, 28000m));
-            _all.Add(new Insumo("Queso mozzarella", "Lácteos", 1.1m, "kg", 2m, 18000m));
-            _all.Add(new Insumo("Tomate chonto", "Verduras", 8m, "kg", 3m, 3500m));
-            _all.Add(new Insumo("Cerveza artesanal", "Bebidas", 2m, "und", 6m, 4500m));
-            _all.Add(new Insumo("Harina trigo", "Secos", 12m, "kg", 5m, 2800m));
-            _all.Add(new Insumo("Lechuga crespa", "Verduras", 0.8m, "kg", 1.5m, 4000m));
-            _all.Add(new Insumo("Pollo entero", "Carnes", 6m, "kg", 4m, 11000m));
-            _all.Add(new Insumo("Aceite vegetal", "Secos", 3.5m, "L", 2m, 9000m));
+            _loading = true;
+            string selected = cmbCategory.SelectedItem?.ToString();
+            cmbCategory.Items.Clear();
+            cmbCategory.Items.Add("Todas");
+            foreach (var c in InsumoStore.Categories().Concat(_all.Select(i => i.Category)).Distinct().OrderBy(c => c))
+                cmbCategory.Items.Add(c);
+            int idx = selected == null ? 0 : cmbCategory.Items.IndexOf(selected);
+            cmbCategory.SelectedIndex = idx < 0 ? 0 : idx;
+            _loading = false;
         }
 
         private void ApplyFilter()
@@ -67,17 +86,22 @@ namespace app_escritorio.Forms
 
         private void Filter_Changed(object sender, EventArgs e)
         {
-            if (!UiHelpers.IsDesignTime) ApplyFilter();
+            if (!UiHelpers.IsDesignTime && !_loading) ApplyFilter();
         }
 
         private void BtnAdd_Click(object sender, EventArgs e)
         {
             using (var dlg = new InsumoDialogForm(null))
                 if (dlg.ShowDialog(TopLevelControl ?? this) == DialogResult.OK && dlg.Result != null)
-                {
-                    _all.Add(dlg.Result);
-                    ApplyFilter();
-                }
+                    SaveInsumo(dlg.Result, null);
+        }
+
+        private void SaveInsumo(Insumo ins, string oldName)
+        {
+            string error = InsumoStore.Save(ins, oldName);
+            if (error != null)
+                MessageBox.Show("No se pudo guardar el insumo.\n\n" + error, "Inventario", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            Reload();
         }
 
         private void Grid_CellClick(object sender, DataGridViewCellEventArgs e)
@@ -88,18 +112,18 @@ namespace app_escritorio.Forms
             {
                 using (var dlg = new InsumoDialogForm(ins))
                     if (dlg.ShowDialog(TopLevelControl ?? this) == DialogResult.OK && dlg.Result != null)
-                    {
-                        _all[_all.IndexOf(ins)] = dlg.Result;
-                        ApplyFilter();
-                    }
+                        SaveInsumo(dlg.Result, ins.Name);
             }
             else if (e.ColumnIndex == colDelete.Index)
             {
-                if (MessageBox.Show("¿Eliminar " + ins.Name + "?", "RestoOS", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-                {
-                    _all.Remove(ins);
-                    ApplyFilter();
-                }
+                int platos = InsumoStore.RecipeCount(ins);
+                string question = "¿Eliminar " + ins.Name + "?" +
+                                  (platos > 0 ? "\n\nEstá en la receta de " + platos + " plato(s); se quitará de esas recetas." : "");
+                if (MessageBox.Show(question, "RestoOS", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+                string error = InsumoStore.Delete(ins);
+                if (error != null)
+                    MessageBox.Show("No se pudo eliminar el insumo.\n\n" + error, "Inventario", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Reload();
             }
         }
     }

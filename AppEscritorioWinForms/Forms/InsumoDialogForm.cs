@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Globalization;
 using System.Windows.Forms;
+using app_escritorio.Data;
 using app_escritorio.Models;
 using app_escritorio.UI;
 
@@ -13,9 +14,15 @@ namespace app_escritorio.Forms
 
         public InsumoDialogForm() : this(null) { }
 
+        private readonly int _id;
+
         public InsumoDialogForm(Insumo ins)
         {
             InitializeComponent();
+            _id = ins?.Id ?? 0;
+            if (!UiHelpers.IsDesignTime)
+                foreach (var c in InsumoStore.Categories())
+                    if (!cmbCategory.Items.Contains(c)) cmbCategory.Items.Add(c);
             if (ins == null)
             {
                 Text = lblTitle.Text = "Nuevo insumo";
@@ -54,8 +61,14 @@ namespace app_escritorio.Forms
                 return;
             }
             string cat = string.IsNullOrWhiteSpace(cmbCategory.Text) ? "Secos" : cmbCategory.Text.Trim();
-            string unit = string.IsNullOrWhiteSpace(cmbUnit.Text) ? "und" : cmbUnit.Text.Trim();
-            Result = new Insumo(name, cat, Num(txtStock.Text), unit, Num(txtMin.Text), Num(txtCost.Text));
+            string unit = Unidades.Normalizar(cmbUnit.Text);
+            if (unit == null)
+            {
+                MessageBox.Show("Unidad no válida. Usa: " + string.Join(", ", Unidades.Todas) + ".", "RestoOS", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                cmbUnit.Focus();
+                return;
+            }
+            Result = new Insumo(name, cat, Num(txtStock.Text), unit, Num(txtMin.Text), Num(txtCost.Text)) { Id = _id };
             DialogResult = DialogResult.OK;
             Close();
         }

@@ -6,6 +6,8 @@ namespace app_escritorio.Models
     public class MenuItem
     {
         public Guid Id { get; set; } = Guid.NewGuid();
+        /// <summary>Id en la tabla Producto (0 = aún no guardado).</summary>
+        public int DbId { get; set; }
         public string Name { get; set; }
         public string Description { get; set; }
         public decimal PriceSalon { get; set; }

@@ -13,7 +13,7 @@ namespace app_escritorio.Forms
 {
     /// <summary>
     /// Menú digital: carta en tarjetas con foto, estado y etiquetas, filtros rápidos y panel de "Edición Rápida".
-    /// Al publicar, la carta se guarda (data\menu.xml) y el POS se actualiza al instante (MenuStore.MenuChanged).
+    /// Al publicar, la carta se guarda en SQL Server y el POS se actualiza al instante (MenuStore.MenuChanged).
     /// </summary>
     public partial class MenuForm : Form
     {
@@ -381,6 +381,8 @@ namespace app_escritorio.Forms
             if (txtStock.Text.Trim().Length > 0 && (!int.TryParse(txtStock.Text.Trim(), out stock) || stock < 0))
             { Warn("Porciones inválidas: deja vacío para ilimitado o escribe un número.", txtStock); return; }
             if (!(cmbCategoria.SelectedItem is Category cat)) { Warn("Elige una categoría.", cmbCategoria); return; }
+            if (Data.Items.Any(i => !ReferenceEquals(i, _editing) && string.Equals((i.Name ?? "").Trim(), name, StringComparison.OrdinalIgnoreCase)))
+            { Warn("Ya hay un plato llamado \"" + name + "\". Usa otro nombre.", txtNombre); return; }
 
             var item = _editing;
             if (item.CategoryId != cat.Id) item.Position = Data.Items.Count(i => i.CategoryId == cat.Id);
@@ -410,7 +412,11 @@ namespace app_escritorio.Forms
             cat.ItemIds.Add(item.Id);
             if (_isNew) Data.Items.Add(item);
 
-            MenuStore.Publish();
+            if (!MenuStore.Publish())
+            {
+                SetStatus("✗ No se pudo guardar en la base: revisa el mensaje y vuelve a publicar", Theme.Error);
+                return;
+            }
             _isNew = false;
             _dirty = false;
             btnDuplicar.Enabled = btnEliminar.Enabled = true;
@@ -445,9 +451,12 @@ namespace app_escritorio.Forms
             if (_editing == null || _isNew || !ConfirmDiscard()) return;
             _dirty = false;
             var src = _editing;
+            string copyName = src.Name + " (copia)";
+            for (int n = 2; Data.Items.Any(i => string.Equals(i.Name, copyName, StringComparison.OrdinalIgnoreCase)); n++)
+                copyName = src.Name + " (copia " + n + ")";
             var copy = new MenuItem
             {
-                Name = src.Name + " (copia)", Description = src.Description, CategoryId = src.CategoryId,
+                Name = copyName, Description = src.Description, CategoryId = src.CategoryId,
                 PriceSalon = src.PriceSalon, PriceDelivery = src.PriceDelivery, CommissionPercentage = src.CommissionPercentage,
                 NoCommission = src.NoCommission, IsAvailable = src.IsAvailable, IsSuggestion = src.IsSuggestion,
                 ImageUrl = src.ImageUrl, Stock = src.Stock, Position = src.Position + 1,
@@ -503,7 +512,7 @@ namespace app_escritorio.Forms
 
         private void BtnHistorial_Click(object sender, EventArgs e)
         {
-            using (var history = new OrderHistoryForm("data/orders.xml")) history.ShowDialog(TopLevelControl ?? this);
+            using (var history = new OrderHistoryForm()) history.ShowDialog(TopLevelControl ?? this);
         }
 
         /// <summary>Atajos: Ctrl+F buscar · Ctrl+N nuevo plato · Ctrl+S publicar.</summary>
