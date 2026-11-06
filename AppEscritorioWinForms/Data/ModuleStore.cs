@@ -1,19 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 
 namespace app_escritorio.Data
 {
     /// <summary>
-    /// Módulos activados/desactivados (%LocalAppData%\RestoOS\modules.dat, formato clave=1/0).
-    /// Lo usan la pantalla Módulos, el sidebar y el POS.
+    /// Módulos activados/desactivados (tabla Modulo). Lo usan la pantalla Módulos, el sidebar y el POS.
     /// </summary>
     public static class ModuleStore
     {
         /// <summary>Claves de los módulos opcionales (el POS siempre está activo).</summary>
         public static readonly string[] Keys = { "salon", "menu", "kds", "inventario", "reservas", "delivery", "reportes" };
 
-        private static string StorePath => Path.Combine(LocalSettings.AppDataDir, "modules.dat");
         private static Dictionary<string, bool> _store;
 
         /// <summary>Se dispara al activar/desactivar un módulo (clave, activo).</summary>
@@ -31,12 +28,9 @@ namespace app_escritorio.Data
                 };
                 try
                 {
-                    if (File.Exists(StorePath))
-                        foreach (var line in File.ReadAllLines(StorePath))
-                        {
-                            var p = line.Split('=');
-                            if (p.Length == 2) _store[p[0].Trim().ToLowerInvariant()] = p[1].Trim() == "1";
-                        }
+                    foreach (var (clave, activo) in Db.Query("SELECT Clave, Activo FROM dbo.Modulo",
+                                 rd => (Db.Str(rd, "Clave"), Db.Bool(rd, "Activo"))))
+                        _store[clave.Trim().ToLowerInvariant()] = activo;
                 }
                 catch { }
                 return _store;
@@ -47,22 +41,20 @@ namespace app_escritorio.Data
 
         public static void SetEnabled(string key, bool enabled)
         {
-            if (IsEnabled(key) == enabled && Store.ContainsKey(key)) return;
-            Store[key] = enabled;
-            Save();
-            ModuleStateChanged?.Invoke(key, enabled);
-        }
-
-        private static void Save()
-        {
+            if (key == "pos" || (IsEnabled(key) == enabled && Store.ContainsKey(key))) return;
             try
             {
-                Directory.CreateDirectory(LocalSettings.AppDataDir);
-                var lines = new List<string>();
-                foreach (var kv in Store) lines.Add(kv.Key + "=" + (kv.Value ? "1" : "0"));
-                File.WriteAllLines(StorePath, lines);
+                Db.Execute(@"UPDATE dbo.Modulo SET Activo = @a WHERE Clave = @k;
+                             IF @@ROWCOUNT = 0 INSERT INTO dbo.Modulo (Clave, Nombre, Activo) VALUES (@k, @k, @a);",
+                    "@k", key, "@a", enabled);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Db.ShowError("guardar el estado del módulo", ex);
+                return;
+            }
+            Store[key] = enabled;
+            ModuleStateChanged?.Invoke(key, enabled);
         }
     }
 }

@@ -30,7 +30,8 @@ namespace app_escritorio.Shell
             if (UiHelpers.IsDesignTime) return;
 
             bool isAdmin = IsAdmin;
-            topBar.RoleText = isAdmin ? "Administrador" : "Empleados";
+            string perfil = isAdmin ? "Administrador" : "Empleados";
+            topBar.RoleText = string.IsNullOrEmpty(Sesion.Nombre) ? perfil : Sesion.Nombre + " · " + perfil;
             sidebar.SetRole(isAdmin);
             sidebar.SetBranch(LocalSettings.LoadRestaurantName(), LocalSettings.LoadAddress());
 
@@ -112,8 +113,8 @@ namespace app_escritorio.Shell
                 case "pos": return "POS";
                 case "mesas": return "Mesas y Salón";
                 case "kds": return "Cocina KDS · DEMO";
-                case "inventario": return "Inventario · DEMO";
-                case "reservas": return "Reservas · DEMO";
+                case "inventario": return "Inventario";
+                case "reservas": return "Reservas";
                 case "delivery": return "Delivery · DEMO";
                 case "reportes": return "Reportes · Solo Admin";
                 case "configuracion": return "Configuración · Solo Admin";
@@ -166,6 +167,10 @@ namespace app_escritorio.Shell
             if (view is ModulesForm modules) modules.LoadState();
 
             if (view is SettingsForm config) config.LoadData();
+
+            if (view is InventarioForm inventario) inventario.Reload();
+
+            if (view is ReportesForm reportes) reportes.Reload();
         }
 
         private void Config_RestaurantSaved(object sender, EventArgs e)
