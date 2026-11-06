@@ -56,7 +56,10 @@ namespace app_escritorio.Views.Mesas
             string status = cmbStatus.SelectedItem?.ToString() ?? "Libre";
             string sector = cmbSector.SelectedItem?.ToString() ?? "Principal";
 
-            Result = new MesaInfo(name, sector, capacity, status, _original?.MockTotal ?? "$0", status != "Reservada");
+            Result = new MesaInfo(name, sector, capacity, status, _original?.MockTotal ?? "$0", status != "Reservada")
+            {
+                Id = _original?.Id ?? 0   // conserva el Id: la base actualiza la misma mesa (y su ticket la sigue)
+            };
             DialogResult = DialogResult.OK;
             Close();
         }

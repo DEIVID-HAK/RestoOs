@@ -7,6 +7,8 @@ namespace app_escritorio.Forms
 
     public class Product
     {
+        /// <summary>Id del plato en la tabla Producto.</summary>
+        public int ProductoId { get; set; }
         public string Name { get; set; }
         public string Category { get; set; }
         public decimal Price { get; set; }

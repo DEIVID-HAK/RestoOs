@@ -12,6 +12,7 @@ namespace app_escritorio.Forms
 {
     /// <summary>
     /// Mesas y Salón (migración de MesasView.xaml de WPF): plano de mesas por salón, detalle y apertura en el POS.
+    /// Las mesas y sus estados se leen de SQL Server (MesaStore); el POS las marca "Ocupada" al abrir ticket y "Por limpiar" al cobrar.
     /// El diseño está en MesasForm.Designer.cs y en TableCard; aquí solo va la lógica.
     /// </summary>
     public partial class MesasForm : Form
@@ -27,19 +28,19 @@ namespace app_escritorio.Forms
             InitializeComponent();
             if (UiHelpers.IsDesignTime) return;
 
-            _mesas = MesaStore.Load();
             cmbSector.SelectedIndex = 0;
             TicketStore.TicketChanged += TicketStore_TicketChanged;
             HandleDestroyed += (s, e) => TicketStore.TicketChanged -= TicketStore_TicketChanged;
             RefreshView();
         }
 
-        /// <summary>Vuelve a pintar las tarjetas y el detalle (totales del POS al día).</summary>
+        /// <summary>Relee las mesas de la base y vuelve a pintar tarjetas y detalle (estados y totales del POS al día).</summary>
         public void RefreshView()
         {
             if (IsDisposed || Disposing) return;
+            _mesas = MesaStore.Load();
             RenderTables();
-            if (_selected != null) ShowDetail(_mesas.FirstOrDefault(m => m.Name == _selected.Name));
+            if (_selected != null) ShowDetail(_mesas.FirstOrDefault(m => m.Id == _selected.Id));
         }
 
         private void TicketStore_TicketChanged()
@@ -99,7 +100,7 @@ namespace app_escritorio.Forms
 
             var ticket = TicketStore.GetTicketFor(mesa.Name);
             if (ticket.Count == 0)
-                lblDetailItems.Text = mesa.Status == "Libre" || mesa.Status == "Reservada" ? "Sin pedido activo." : "Pedido activo de demostración.";
+                lblDetailItems.Text = "Sin pedido activo.";
             else
                 lblDetailItems.Text = string.Join(Environment.NewLine, ticket.Select(l =>
                     l.Name + (l.Quantity > 1 ? " x" + l.Quantity : "") + "  " + l.TotalText +
@@ -135,7 +136,7 @@ namespace app_escritorio.Forms
                 }
                 _mesas.Add(dialog.Result);
                 MesaStore.Save(_mesas);
-                RenderTables();
+                RefreshView();
             }
         }
 
@@ -156,8 +157,8 @@ namespace app_escritorio.Forms
                 if (!string.Equals(oldName, dialog.Result.Name, StringComparison.Ordinal))
                     TicketStore.Rename(oldName, dialog.Result.Name);
                 MesaStore.Save(_mesas);
-                RenderTables();
-                if (_selected == mesa) ShowDetail(dialog.Result);
+                if (_selected == mesa) _selected = dialog.Result;
+                RefreshView();
             }
         }
 
@@ -168,7 +169,7 @@ namespace app_escritorio.Forms
             TicketStore.RemoveTicket(mesa.Name);
             MesaStore.Save(_mesas);
             if (_selected == mesa) ShowDetail(null);
-            RenderTables();
+            RefreshView();
         }
     }
 }

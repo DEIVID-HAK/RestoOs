@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Globalization;
 using System.Windows.Forms;
+using app_escritorio.Data;
 using app_escritorio.Models;
 using app_escritorio.UI;
 
@@ -13,16 +14,30 @@ namespace app_escritorio.Forms
 
         public ReservaDialogForm() : this(null, DateTime.Today) { }
 
+        private readonly int _id;
+
         public ReservaDialogForm(Reserva r, DateTime defaultDate)
         {
             InitializeComponent();
+            _id = r?.Id ?? 0;
+            if (!UiHelpers.IsDesignTime)
+            {
+                // Mesas reales del salón (antes era una lista fija).
+                var mesas = MesaStore.Names();
+                if (mesas.Count > 0)
+                {
+                    cmbMesa.Items.Clear();
+                    cmbMesa.Items.Add(ReservaStore.SinMesa);
+                    foreach (var m in mesas) cmbMesa.Items.Add(m);
+                }
+            }
             if (r == null)
             {
                 Text = lblTitle.Text = "Nueva reserva";
                 txtFecha.Text = defaultDate.ToString("dd/MM/yyyy");
                 txtHora.Text = "19:00";
                 cmbPersonas.Text = "2";
-                cmbMesa.Text = "Mesa 1";
+                cmbMesa.Text = cmbMesa.Items.Count > 1 ? cmbMesa.Items[1].ToString() : ReservaStore.SinMesa;
                 cmbEstado.SelectedIndex = 0;
                 return;
             }
@@ -60,10 +75,10 @@ namespace app_escritorio.Forms
             }
             fecha = TimeSpan.TryParse(txtHora.Text.Trim(), out TimeSpan hora) ? fecha.Add(hora) : fecha.AddHours(19);
             int personas = int.TryParse(cmbPersonas.Text.Trim(), out int p) && p > 0 ? p : 2;
-            string mesa = string.IsNullOrWhiteSpace(cmbMesa.Text) ? "Mesa 1" : cmbMesa.Text.Trim();
+            string mesa = string.IsNullOrWhiteSpace(cmbMesa.Text) ? ReservaStore.SinMesa : cmbMesa.Text.Trim();
             string estado = cmbEstado.SelectedItem?.ToString() ?? "Confirmada";
 
-            Result = new Reserva(fecha, cliente, personas, mesa, estado, txtTel.Text.Trim());
+            Result = new Reserva(fecha, cliente, personas, mesa, estado, txtTel.Text.Trim()) { Id = _id };
             DialogResult = DialogResult.OK;
             Close();
         }
