@@ -8,17 +8,19 @@ using app_escritorio.Data;
 using app_escritorio.Models;
 using app_escritorio.UI;
 using app_escritorio.Utils;
+using app_escritorio.Views.Pos;
 
 namespace app_escritorio.Forms
 {
     /// <summary>
     /// Reportes + Trazabilidad (migración de ReportesView.xaml de WPF). Solo Admin.
-    /// Genera ventas DEMO de los últimos 30 días y calcula KPIs, gráfico, top platos, ventas por mesa e historial.
+    /// Lee las ventas reales de SQL Server (VentaStore): KPIs, gráfico, top platos, ventas por mesa e historial.
+    /// Desde el detalle de una venta se puede anular con PIN de administrador y motivo (sp_AnularVenta).
     /// </summary>
     public partial class ReportesForm : Form
     {
         private static readonly CultureInfo Co = CultureInfo.GetCultureInfo("es-CO");
-        private readonly List<Venta> _ventas = new List<Venta>();
+        private List<Venta> _ventas = new List<Venta>();
         private bool _ready;
 
         public ReportesForm()
@@ -26,55 +28,34 @@ namespace app_escritorio.Forms
             InitializeComponent();
             if (UiHelpers.IsDesignTime) return;
 
-            GenerateMock();
             cmbPeriodo.SelectedIndex = 1;
             cmbOrigen.SelectedIndex = 0;
             cmbMetodo.SelectedIndex = 0;
             cmbEstado.SelectedIndex = 0;
             _ready = true;
-            RefreshData();
+            Reload();
         }
 
         private static string Money(decimal v) => v.ToString("C0", Co);
 
-        // ===================== Datos DEMO =====================
+        // ===================== Datos =====================
 
-        private void GenerateMock()
+        /// <summary>Relee las ventas de la base (el período más largo es 30 días o el mes en curso).</summary>
+        public void Reload()
         {
-            var platos = new (string Name, decimal Price)[]
+            if (!_ready || IsDisposed || Disposing) return;
+            var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+            var from = monthStart < DateTime.Today.AddDays(-29) ? monthStart : DateTime.Today.AddDays(-29);
+            try
             {
-                ("Bife de Chorizo 400g", 22000), ("Pizza Napolitana Familiar", 14500), ("Hamburguesa Doble Queso", 12000),
-                ("Cerveza Tirada IPA", 5000), ("Ensalada César con Pollo", 11000), ("Ravioles 4 Quesos", 13500),
-                ("Limonada Menta", 4500), ("Tiramisú Casero", 7000)
-            };
-            var mesas = new[] { "Mesa 2", "Mesa 3", "Mesa 5", "Barra 1", "Terraza 1", "VIP 1" };
-            var cajeros = new[] { "Ana", "Carlos" };
-            var rnd = new Random(2026);
-            int configuredTax = LocalSettings.LoadTaxPercent();
-
-            for (int d = 29; d >= 0; d--)
-            {
-                int count = d == 0 ? 4 : 2 + rnd.Next(4);
-                for (int i = 0; i < count; i++)
-                {
-                    var fecha = DateTime.Today.AddDays(-d).AddHours(12 + rnd.Next(10)).AddMinutes(rnd.Next(60));
-                    if (fecha > DateTime.Now) fecha = DateTime.Now.AddMinutes(-5 - 20 * i);
-                    bool delivery = rnd.Next(5) == 0;
-                    var v = new Venta(fecha, delivery ? "Delivery" : mesas[rnd.Next(mesas.Length)], "", 0,
-                                      rnd.Next(2) == 0 ? "Efectivo" : "Tarjeta", cajeros[rnd.Next(2)],
-                                      rnd.Next(12) == 0 ? "Anulado" : "Cobrado", delivery ? "Delivery" : "Salón");
-                    int lines = 1 + rnd.Next(3);
-                    for (int l = 0; l < lines; l++)
-                    {
-                        var p = platos[rnd.Next(platos.Length)];
-                        v.Items.Add(new VentaItem(p.Name, 1 + rnd.Next(3), p.Price));
-                    }
-                    v.Total = v.Items.Sum(x => x.Subtotal);
-                    v.TaxPct = configuredTax;
-                    v.Detalle = string.Join(", ", v.Items.Select(x => "x" + x.Cantidad + " " + x.Plato));
-                    _ventas.Add(v);
-                }
+                _ventas = VentaStore.Load(from);
             }
+            catch (Exception ex)
+            {
+                Db.ShowError("cargar las ventas", ex);
+                _ventas = new List<Venta>();
+            }
+            RefreshData();
         }
 
         private DateTime PeriodStart()
@@ -107,9 +88,8 @@ namespace app_escritorio.Forms
             lblTotalSub.Text = tickets + " tickets · " + cmbPeriodo.Text.ToLower(Co);
             lblTicket.Text = Money(tickets == 0 ? 0 : Math.Round(total / tickets));
             lblTax.Text = Money(Math.Round(cobradas.Sum(v => v.TaxAmount())));
-            lblTaxSub.Text = "Estimado con tasa configurada (" + LocalSettings.LoadTaxPercent() + "%)";
-            lblMetodo.Text = Money(cobradas.Where(v => v.Metodo == "Efectivo").Sum(v => v.Total)) + " / " +
-                             Money(cobradas.Where(v => v.Metodo == "Tarjeta").Sum(v => v.Total));
+            lblTaxSub.Text = "Impuesto cobrado en cada venta";
+            lblMetodo.Text = Money(cobradas.Sum(v => v.Efectivo)) + " / " + Money(cobradas.Sum(v => v.Tarjeta));
 
             // Gráfico: siempre los últimos 7 días
             var values = new decimal[7];
@@ -143,10 +123,10 @@ namespace app_escritorio.Forms
             string metodo = cmbMetodo.SelectedItem?.ToString() ?? "Todos";
             string estado = cmbEstado.SelectedItem?.ToString() ?? "Todos";
 
-            var rows = InPeriod().Where(v => (metodo == "Todos" || v.Metodo == metodo)
+            var rows = InPeriod().Where(v => (metodo == "Todos" || (metodo == "Efectivo" ? v.Efectivo > 0 : v.Tarjeta > 0))
                                              && (estado == "Todos" || v.Estado == estado)
-                                             && (text.Length == 0 || v.Mesa.ToLowerInvariant().Contains(text)
-                                                 || v.Detalle.ToLowerInvariant().Contains(text) || v.Cajero.ToLowerInvariant().Contains(text)))
+                                             && (text.Length == 0 || (v.Mesa ?? "").ToLowerInvariant().Contains(text)
+                                                 || (v.Detalle ?? "").ToLowerInvariant().Contains(text) || (v.Cajero ?? "").ToLowerInvariant().Contains(text)))
                                  .OrderByDescending(v => v.Fecha).ToList();
 
             gridHist.Rows.Clear();
@@ -171,7 +151,7 @@ namespace app_escritorio.Forms
             if (_ready) RefreshHistorial();
         }
 
-        private void BtnRefresh_Click(object sender, EventArgs e) => RefreshData();
+        private void BtnRefresh_Click(object sender, EventArgs e) => Reload();
 
         private void GridHist_CellClick(object sender, DataGridViewCellEventArgs e)
         {
@@ -179,15 +159,62 @@ namespace app_escritorio.Forms
 
             var sb = new StringBuilder();
             sb.AppendLine("RESTOOS — TRAZABILIDAD POS");
-            sb.AppendLine(v.Fecha.ToString("dd/MM/yyyy HH:mm"));
+            sb.AppendLine("Venta N.º " + v.Id + " · " + v.Fecha.ToString("dd/MM/yyyy HH:mm"));
             sb.AppendLine("Mesa: " + v.Mesa + " — Cajero: " + v.Cajero);
             sb.AppendLine("----------------------------");
             foreach (var it in v.Items) sb.AppendLine("x" + it.Cantidad + " " + it.Plato + "   " + Money(it.Subtotal));
             sb.AppendLine("----------------------------");
+            sb.AppendLine("Subtotal: " + Money(v.Subtotal));
+            sb.AppendLine("Impuesto (" + v.TaxPct + "%): " + Money(v.Impuesto));
             sb.AppendLine("Total: " + v.TotalText);
-            sb.AppendLine("Método: " + v.Metodo);
+            sb.AppendLine("Método: " + v.Metodo + (v.Metodo == "Mixto" ? " (efectivo " + Money(v.Efectivo) + ", tarjeta " + Money(v.Tarjeta) + ")" : ""));
             sb.AppendLine("Estado: " + v.Estado);
-            MessageBox.Show(sb.ToString(), "Detalle de venta", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+            if (v.Estado != "Cobrado")
+            {
+                MessageBox.Show(sb.ToString(), "Detalle de venta", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            sb.AppendLine();
+            sb.AppendLine("¿Quieres ANULAR esta venta? (requiere PIN de administrador y motivo)");
+            if (MessageBox.Show(sb.ToString(), "Detalle de venta", MessageBoxButtons.YesNo, MessageBoxIcon.Information,
+                                MessageBoxDefaultButton.Button2) == DialogResult.Yes)
+                AnularVenta(v);
+        }
+
+        /// <summary>Anulación (requisitos §8): PIN de un administrador distinto al cajero, motivo obligatorio y devolución de insumos.</summary>
+        private void AnularVenta(Venta v)
+        {
+            int supervisorId;
+            using (var pin = new AdminCodeForm("Administrador", "Autorizar anulación"))
+            {
+                if (pin.ShowDialog(TopLevelControl ?? this) != DialogResult.OK) return;
+                supervisorId = pin.UsuarioId;
+            }
+
+            string motivo;
+            using (var note = new NoteDialog("Motivo de la anulación", string.Empty))
+            {
+                if (note.ShowDialog(TopLevelControl ?? this) != DialogResult.OK) return;
+                motivo = note.NoteResult;
+            }
+            if (string.IsNullOrWhiteSpace(motivo))
+            {
+                MessageBox.Show("El motivo de la anulación es obligatorio.", "RestoOS", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                VentaStore.Anular(v.Id, supervisorId, motivo);
+            }
+            catch (Exception ex)
+            {
+                Db.ShowError("anular la venta", ex);
+                return;
+            }
+            MessageBox.Show("Venta N.º " + v.Id + " anulada. Los insumos volvieron al inventario.", "RestoOS", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            Reload();
         }
     }
 }

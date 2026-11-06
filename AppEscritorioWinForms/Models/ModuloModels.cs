@@ -6,8 +6,8 @@ using app_escritorio.Utils;
 
 namespace app_escritorio.Models
 {
-    // Modelos de los módulos DEMO (KDS, Inventario, Reservas, Delivery y Reportes).
-    // Solo viven en memoria: la persistencia real queda para la Fase 2 (SQLite).
+    // Modelos de los módulos KDS, Inventario, Reservas, Delivery y Reportes.
+    // Inventario, Reservas y Reportes se leen de SQL Server (Data/*Store); KDS y Delivery siguen siendo DEMO en memoria.
 
     internal static class Fmt
     {
@@ -66,6 +66,8 @@ namespace app_escritorio.Models
 
     public class Insumo
     {
+        /// <summary>Id en la tabla Insumo (0 = nuevo).</summary>
+        public int Id { get; set; }
         public string Name { get; set; }
         public string Category { get; set; }
         public decimal Stock { get; set; }
@@ -91,6 +93,8 @@ namespace app_escritorio.Models
 
     public class Reserva
     {
+        /// <summary>Id en la tabla Reserva (0 = nueva).</summary>
+        public int Id { get; set; }
         public DateTime Fecha { get; set; }
         public string Cliente { get; set; }
         public int Personas { get; set; }
@@ -167,6 +171,8 @@ namespace app_escritorio.Models
 
     public class Venta
     {
+        /// <summary>Id en la tabla Venta.</summary>
+        public int Id { get; set; }
         public DateTime Fecha { get; set; }
         public string Mesa { get; set; }
         public string Detalle { get; set; }
@@ -176,16 +182,18 @@ namespace app_escritorio.Models
         public string Estado { get; set; }
         public string Origen { get; set; }
         public List<VentaItem> Items { get; } = new List<VentaItem>();
-        /// <summary>Tasa de impuesto aplicada a esta venta en % (0, 8, 19, 27). Evita el 8% hardcodeado en Reportes.</summary>
+        /// <summary>Tasa de impuesto aplicada a esta venta en % (0, 8, 19, 27).</summary>
         public int TaxPct { get; set; } = 8;
+        /// <summary>Suma de las líneas, antes de impuesto.</summary>
+        public decimal Subtotal { get; set; }
+        /// <summary>Impuesto cobrado (guardado en la venta; el POS lo suma al subtotal).</summary>
+        public decimal Impuesto { get; set; }
+        /// <summary>Parte del total pagada en efectivo y con tarjeta (una venta puede tener las dos).</summary>
+        public decimal Efectivo { get; set; }
+        public decimal Tarjeta { get; set; }
 
-        /// <summary>Impuesto estimado incluido en el Total con la tasa de esta venta.</summary>
-        public decimal TaxAmount()
-        {
-            if (TaxPct <= 0) return 0m;
-            decimal rate = TaxPct / 100m;
-            return Total - Total / (1 + rate);
-        }
+        /// <summary>Impuesto de la venta tal como se cobró (antes se estimaba como incluido en el total, lo que no coincidía con el POS).</summary>
+        public decimal TaxAmount() => Impuesto;
 
         public Venta(DateTime fecha, string mesa, string detalle, decimal total, string metodo, string cajero, string estado, string origen = "Salón")
         {

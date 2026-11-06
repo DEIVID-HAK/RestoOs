@@ -60,7 +60,7 @@ namespace app_escritorio.Forms
             this.list.ForeColor = app_escritorio.Utils.Theme.TextPrimary;
             this.list.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.list.Columns.Add("Fecha", 145);
-            this.list.Columns.Add("Cliente", 180);
+            this.list.Columns.Add("Cajero", 180);
             this.list.Columns.Add("Mesa", 70);
             this.list.Columns.Add("Estado", 110);
             this.list.Columns.Add("Total", 100);
@@ -102,7 +102,7 @@ namespace app_escritorio.Forms
             // 
             // OrderHistoryForm
             // 
-            this.Text = "Historial de pedidos";
+            this.Text = "Historial de ventas";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Size = new System.Drawing.Size(1050, 650);
             this.MinimumSize = new System.Drawing.Size(800, 500);

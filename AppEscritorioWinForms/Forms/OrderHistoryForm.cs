@@ -9,32 +9,45 @@ using app_escritorio.Utils;
 
 namespace app_escritorio.Forms
 {
+    /// <summary>Historial de ventas de los últimos 30 días (desde Menú digital). Lee la tabla Venta con VentaStore.</summary>
     public partial class OrderHistoryForm : Form
     {
-        private readonly string filePath;
-        private List<OrderRecord> records;
+        private static readonly System.Globalization.CultureInfo Co = System.Globalization.CultureInfo.GetCultureInfo("es-CO");
+        private List<Venta> records;
 
+        public OrderHistoryForm() : this(null) { }
+
+        /// <param name="historyFile">Ya no se usa (antes era data/orders.xml); se conserva la firma.</param>
         public OrderHistoryForm(string historyFile)
         {
-            filePath = historyFile;
             InitializeComponent();
             LoadRecords();
         }
 
         private void LoadRecords()
         {
-            records = OrderHistoryStore.Load(filePath).OrderByDescending(r => r.CreatedAt).ToList();
-            summary.Text = string.Format("Pedidos: {0}    Ventas: {1:C}    Hoy: {2}", records.Count, records.Sum(r => r.Total), records.Count(r => r.CreatedAt.Date == DateTime.Today));
+            try
+            {
+                records = VentaStore.Load(DateTime.Today.AddDays(-29)).OrderByDescending(r => r.Fecha).ToList();
+            }
+            catch (Exception ex)
+            {
+                Db.ShowError("cargar el historial", ex);
+                records = new List<Venta>();
+            }
+            var cobradas = records.Where(r => r.Estado == "Cobrado").ToList();
+            summary.Text = string.Format(Co, "Ventas: {0}    Total cobrado: {1:C0}    Hoy: {2}",
+                cobradas.Count, cobradas.Sum(r => r.Total), cobradas.Count(r => r.Fecha.Date == DateTime.Today));
             list.BeginUpdate();
             list.Items.Clear();
             foreach (var record in records)
             {
-                var row = new ListViewItem(record.CreatedAt.ToString("dd/MM/yyyy HH:mm"));
-                row.SubItems.Add(record.CustomerName ?? "");
-                row.SubItems.Add(record.TableNumber ?? "");
-                row.SubItems.Add(record.Status ?? "Pendiente");
-                row.SubItems.Add(record.Total.ToString("C"));
-                row.SubItems.Add((record.Lines ?? new List<OrderRecordLine>()).Count + " productos");
+                var row = new ListViewItem(record.Fecha.ToString("dd/MM/yyyy HH:mm"));
+                row.SubItems.Add(record.Cajero ?? "");
+                row.SubItems.Add(record.Mesa ?? "");
+                row.SubItems.Add(record.Estado ?? "");
+                row.SubItems.Add(record.Total.ToString("C0", Co));
+                row.SubItems.Add(record.Detalle ?? "");
                 list.Items.Add(row);
             }
             list.EndUpdate();

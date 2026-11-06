@@ -54,7 +54,7 @@ namespace app_escritorio.Forms
             UpdateDomicilio();
         }
 
-        /// <summary>Aplica el impuesto por defecto guardado en Configuración (tax.dat).</summary>
+        /// <summary>Aplica el impuesto por defecto guardado en Configuración.</summary>
         public void ReloadTax()
         {
             int p = LocalSettings.LoadTaxPercent();
@@ -79,7 +79,7 @@ namespace app_escritorio.Forms
             var menu = MenuStore.Current;
             foreach (var cat in menu.Categories)
                 foreach (var item in menu.Items.Where(i => i.CategoryId == cat.Id && i.IsAvailable && i.Stock != 0).OrderBy(i => i.Position))
-                    _products.Add(new Product(item.Name, cat.Name, item.PriceSalon));
+                    _products.Add(new Product(item.Name, cat.Name, item.PriceSalon) { ProductoId = item.DbId });
 
             string selected = cmbCategory?.SelectedItem?.ToString();
             if (cmbCategory == null || cmbCategory.IsDisposed) return;
@@ -128,7 +128,7 @@ namespace app_escritorio.Forms
         {
             var product = (sender as ProductTile)?.Product;
             if (product == null) return;
-            var line = _ticket.FirstOrDefault(x => x.Product.Name == product.Name && string.IsNullOrEmpty(x.Notes));
+            var line = _ticket.FirstOrDefault(x => x.Product.Name == product.Name && x.Product.Price == product.Price && string.IsNullOrEmpty(x.Notes));
             if (line == null) _ticket.Add(new OrderLine(product));
             else line.Quantity++;
             RefreshTicket();
@@ -172,7 +172,7 @@ namespace app_escritorio.Forms
         {
             if (IsDisposed || Disposing) return;
             decimal subtotal = _ticket?.Sum(x => x.LineTotal) ?? 0m;
-            decimal tax = subtotal * _taxRate;
+            decimal tax = VentaStore.CalcularImpuesto(subtotal, TaxPct);
             if (lblSubtotal != null && !lblSubtotal.IsDisposed) lblSubtotal.Text = Money(subtotal);
             if (lblTaxLabel != null && !lblTaxLabel.IsDisposed) lblTaxLabel.Text = "Impuesto (" + (_taxRate * 100).ToString("0") + "%)";
             if (lblTax != null && !lblTax.IsDisposed) lblTax.Text = Money(tax);
@@ -180,6 +180,9 @@ namespace app_escritorio.Forms
             btnCobrar.Enabled = _ticket != null && _ticket.Count > 0;
             btnVaciar.Enabled = btnCobrar.Enabled;
         }
+
+        /// <summary>Tasa elegida en % (0, 8, 19 ó 27).</summary>
+        private int TaxPct => (int)Math.Round(_taxRate * 100m);
 
         private int TicketItemWidth()
         {
@@ -285,7 +288,7 @@ namespace app_escritorio.Forms
             }
 
             decimal subtotal = _ticket.Sum(x => x.LineTotal);
-            decimal total = subtotal * (1 + _taxRate);
+            decimal total = subtotal + VentaStore.CalcularImpuesto(subtotal, TaxPct);
             string destino = isDom
                 ? "Domicilio: " + txtCliente.Text.Trim() + " · " + txtDireccion.Text.Trim()
                 : (Tipo.Contains("Para llevar") ? "Para llevar" : _table);
@@ -294,9 +297,32 @@ namespace app_escritorio.Forms
             {
                 if (checkout.ShowDialog(TopLevelControl ?? this) != DialogResult.OK || !checkout.PaymentConfirmed) return;
 
+                // La venta se guarda en la base (sp_CobrarPedido): pago, descuento de insumos y porciones, mesa "Por limpiar".
+                VentaStore.Resultado venta;
+                try
+                {
+                    venta = VentaStore.Cobrar(new VentaStore.Cobro
+                    {
+                        Mesa = _table,
+                        Origen = isDom ? "Domicilio" : Tipo.Contains("Para llevar") ? "Para llevar" : "Salón",
+                        ImpuestoPct = TaxPct,
+                        Metodo = checkout.PaymentMethod,
+                        Recibido = checkout.PaidAmount,
+                        Cliente = txtCliente.Text.Trim(),
+                        Telefono = txtTelefono.Text.Trim(),
+                        Direccion = txtDireccion.Text.Trim()
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Db.ShowError("registrar la venta (el ticket sigue abierto)", ex);
+                    return;
+                }
+
                 var receipt = new StringBuilder();
-                receipt.AppendLine("RESTOOS");
-                receipt.AppendLine("Recibo de demostración");
+                receipt.AppendLine((LocalSettings.LoadRestaurantName() ?? "RestoOS").ToUpper(Co));
+                receipt.AppendLine("Venta N.º " + venta.VentaId + " · " + DateTime.Now.ToString("dd/MM/yyyy HH:mm"));
+                if (!string.IsNullOrEmpty(Sesion.Nombre)) receipt.AppendLine("Cajero: " + Sesion.Nombre);
                 receipt.AppendLine("Tipo: " + Tipo);
                 if (!string.IsNullOrWhiteSpace(destino) && destino != TicketStore.NoTable) receipt.AppendLine(destino);
                 if (isDom)
@@ -311,15 +337,22 @@ namespace app_escritorio.Forms
                     if (!string.IsNullOrEmpty(line.Notes)) receipt.AppendLine("  > " + line.Notes);
                 }
                 receipt.AppendLine("----------------------------");
-                receipt.AppendLine("Subtotal: " + Money(subtotal));
-                receipt.AppendLine("Impuesto (" + (_taxRate * 100).ToString("0") + "%): " + Money(subtotal * _taxRate));
-                receipt.AppendLine("Total: " + Money(total));
+                receipt.AppendLine("Subtotal: " + Money(venta.Subtotal));
+                receipt.AppendLine("Impuesto (" + TaxPct + "%): " + Money(venta.Impuesto));
+                receipt.AppendLine("Total: " + Money(venta.Total));
                 receipt.AppendLine("Pago: " + checkout.PaymentMethod);
-                receipt.AppendLine("Recibido: " + Money(checkout.PaidAmount));
-                receipt.AppendLine("Vuelto: " + Money(checkout.ChangeAmount));
+                if (checkout.PaymentMethod == "Efectivo")
+                {
+                    receipt.AppendLine("Recibido: " + Money(checkout.PaidAmount));
+                    receipt.AppendLine("Vuelto: " + Money(Math.Max(0, checkout.PaidAmount - venta.Total)));
+                }
 
                 using (var preview = new ReceiptDialog(receipt.ToString()))
                     preview.ShowDialog(TopLevelControl ?? this);
+
+                if (venta.AlertasStock.Count > 0)
+                    MessageBox.Show("Insumos con stock bajo después de esta venta:\n\n" + string.Join("\n", venta.AlertasStock),
+                        "Inventario", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
 
             _ticket.Clear();
