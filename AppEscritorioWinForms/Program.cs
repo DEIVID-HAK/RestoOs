@@ -7,13 +7,16 @@ namespace app_escritorio
     {
         /// <summary>
         /// Punto de entrada principal para la aplicación.
-        /// Login → ventana principal (ShellForm). "Cambiar perfil" vuelve al login.
+        /// Base de datos → login → ventana principal (ShellForm). "Cambiar perfil" vuelve al login.
         /// </summary>
         [STAThread]
         static void Main()
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+
+            // Conecta con SQL Server y crea la base RestoOS la primera vez.
+            if (!Data.Db.StartupCheck()) return;
 
             while (true)
             {
@@ -29,6 +32,7 @@ namespace app_escritorio
                     Application.Run(shell);
                     if (!shell.ChangeProfileRequested) return;
                 }
+                Data.Sesion.Cerrar();
             }
         }
     }

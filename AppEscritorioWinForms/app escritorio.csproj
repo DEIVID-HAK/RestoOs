@@ -11,4 +11,14 @@
     <NoWarn>CS8618;CS8602;CS8604;CS8600;CS8625</NoWarn>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Acceso a SQL Server -->
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Script de la base: la app lo ejecuta la primera vez si la base RestoOS no existe (ver Data/Db.cs) -->
+    <EmbeddedResource Include="..\Database\RestoOS_SQLServer.sql" LogicalName="RestoOS.sql" Link="Data\RestoOS_SQLServer.sql" />
+  </ItemGroup>
+
 </Project>
