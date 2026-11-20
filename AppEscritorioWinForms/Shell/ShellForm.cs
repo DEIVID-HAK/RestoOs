@@ -82,9 +82,11 @@ namespace app_escritorio.Shell
         {
             route = (route ?? "modulos").ToLowerInvariant();
 
-            if ((route == "reportes" || route == "configuracion") && !IsAdmin)
+            if ((route == "reportes" || route == "configuracion" || route == "usuarios") && !IsAdmin)
             {
-                MessageBox.Show(route == "reportes" ? "Solo el Administrador puede ver Reportes." : "Solo el Administrador puede ver Configuración.",
+                MessageBox.Show(route == "reportes" ? "Solo el Administrador puede ver Reportes."
+                    : route == "usuarios" ? "Solo el Administrador puede ver Usuarios."
+                    : "Solo el Administrador puede ver Configuración.",
                     "RestoOS", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -117,6 +119,7 @@ namespace app_escritorio.Shell
                 case "reservas": return "Reservas";
                 case "delivery": return "Delivery · DEMO";
                 case "reportes": return "Reportes · Solo Admin";
+                case "usuarios": return "Usuarios · Solo Admin";
                 case "configuracion": return "Configuración · Solo Admin";
                 case "menu": return "Menú digital";
                 default: return "Módulos";
@@ -141,6 +144,7 @@ namespace app_escritorio.Shell
                 case "reservas": form = new ReservasForm(); break;
                 case "delivery": form = new DeliveryForm(); break;
                 case "reportes": form = new ReportesForm(); break;
+                case "usuarios": form = new UsuariosForm(); break;
                 case "configuracion":
                     var config = new SettingsForm();
                     config.RestaurantSaved += Config_RestaurantSaved;
@@ -171,6 +175,8 @@ namespace app_escritorio.Shell
             if (view is InventarioForm inventario) inventario.Reload();
 
             if (view is ReportesForm reportes) reportes.Reload();
+
+            if (view is UsuariosForm usuarios) usuarios.LoadData();
         }
 
         private void Config_RestaurantSaved(object sender, EventArgs e)
