@@ -40,6 +40,7 @@
             this.btnMenu = new app_escritorio.UI.RButton();
             this.btnModulos = new app_escritorio.UI.RButton();
             this.btnReportes = new app_escritorio.UI.RButton();
+            this.btnUsuarios = new app_escritorio.UI.RButton();
             this.btnConfiguracion = new app_escritorio.UI.RButton();
             this.btnConfigModulos = new app_escritorio.UI.RButton();
             this.root.SuspendLayout();
@@ -277,6 +278,7 @@
             this.flowAdmin.Controls.Add(this.lblAdmin);
             this.flowAdmin.Controls.Add(this.btnModulos);
             this.flowAdmin.Controls.Add(this.btnReportes);
+            this.flowAdmin.Controls.Add(this.btnUsuarios);
             this.flowAdmin.Controls.Add(this.btnConfiguracion);
             this.flowAdmin.FlowDirection = System.Windows.Forms.FlowDirection.TopDown;
             this.flowAdmin.Location = new System.Drawing.Point(0, 548);
@@ -332,9 +334,23 @@
             this.btnReportes.Variant = app_escritorio.UI.ButtonVariant.Nav;
             this.btnReportes.Click += new System.EventHandler(this.NavButton_Click);
             // 
+            // btnUsuarios
+            // 
+            this.btnUsuarios.Location = new System.Drawing.Point(0, 123);
+            this.btnUsuarios.Margin = new System.Windows.Forms.Padding(0, 1, 0, 1);
+            this.btnUsuarios.Name = "btnUsuarios";
+            this.btnUsuarios.Padding = new System.Windows.Forms.Padding(14, 0, 8, 0);
+            this.btnUsuarios.Size = new System.Drawing.Size(248, 36);
+            this.btnUsuarios.TabIndex = 3;
+            this.btnUsuarios.Tag = "usuarios";
+            this.btnUsuarios.Text = "▤  Usuarios";
+            this.btnUsuarios.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.btnUsuarios.Variant = app_escritorio.UI.ButtonVariant.Nav;
+            this.btnUsuarios.Click += new System.EventHandler(this.NavButton_Click);
+            // 
             // btnConfiguracion
             // 
-            this.btnConfiguracion.Location = new System.Drawing.Point(0, 123);
+            this.btnConfiguracion.Location = new System.Drawing.Point(0, 167);
             this.btnConfiguracion.Margin = new System.Windows.Forms.Padding(0, 1, 0, 1);
             this.btnConfiguracion.Name = "btnConfiguracion";
             this.btnConfiguracion.Padding = new System.Windows.Forms.Padding(14, 0, 8, 0);
@@ -427,6 +443,7 @@
         private app_escritorio.UI.RButton btnMenu;
         private app_escritorio.UI.RButton btnModulos;
         private app_escritorio.UI.RButton btnReportes;
+        private app_escritorio.UI.RButton btnUsuarios;
         private app_escritorio.UI.RButton btnConfiguracion;
         private app_escritorio.UI.RButton btnConfigModulos;
     }

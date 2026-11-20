@@ -135,7 +135,7 @@ namespace app_escritorio.Shell
         private IEnumerable<RButton> NavButtons()
         {
             return new[] { btnPos, btnMesas, btnKds, btnInventario, btnReservas, btnDelivery, btnMenu,
-                           btnModulos, btnReportes, btnConfiguracion, btnConfigModulos };
+                           btnModulos, btnReportes, btnUsuarios, btnConfiguracion, btnConfigModulos };
         }
     }
 }
